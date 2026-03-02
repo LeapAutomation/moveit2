@@ -329,7 +329,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     RCLCPP_WARN_STREAM(getLogger(), "Velocity/acceleration limits are violated. Re-scaling the trajectory with a factor of " << max_scaling_factor);
     for (auto& point : joint_trajectory.points)
     {
-      point.time_from_start = rclcpp::Duration::from_seconds((point.time_from_start.sec + (point.time_from_start.nanosec * 1e-9)) * max_scaling_factor);
+      point.time_from_start = rclcpp::Duration::from_seconds(rclcpp::Duration(point.time_from_start).seconds() * max_scaling_factor);
       for (auto& velocity : point.velocities)
       {
         velocity /= max_scaling_factor;

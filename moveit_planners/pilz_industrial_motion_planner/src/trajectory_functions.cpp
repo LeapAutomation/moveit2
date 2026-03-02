@@ -336,7 +336,7 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       }
       for (auto& acceleration : point.accelerations)
       {
-        acceleration /= max_scaling_factor;
+        acceleration /= (max_scaling_factor * max_scaling_factor);
       }
     }
   }

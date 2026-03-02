@@ -197,8 +197,8 @@ double pilz_industrial_motion_planner::verifySampleJointLimits(
                                              << joint_limits.getLimit(pos.first).max_deceleration << ". ");
       }
     }
-    max_scaling_factor = std::max(max_scaling_factor, std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_acceleration));
-    max_scaling_factor = std::max(max_scaling_factor, std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_deceleration));
+    max_scaling_factor = std::max(max_scaling_factor, std::sqrt(std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_acceleration)));
+    max_scaling_factor = std::max(max_scaling_factor, std::sqrt(std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_deceleration)));
   }
 
   return max_scaling_factor;

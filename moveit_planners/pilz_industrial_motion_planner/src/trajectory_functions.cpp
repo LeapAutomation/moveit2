@@ -142,7 +142,7 @@ bool pilz_industrial_motion_planner::computeLinkFK(moveit::core::RobotState& rob
   return true;
 }
 
-bool pilz_industrial_motion_planner::verifySampleJointLimits(
+double pilz_industrial_motion_planner::verifySampleJointLimits(
     const std::map<std::string, double>& position_last, const std::map<std::string, double>& velocity_last,
     const std::map<std::string, double>& position_current, double duration_last, double duration_current,
     const pilz_industrial_motion_planner::JointLimitsContainer& joint_limits)
@@ -151,10 +151,12 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
   if (duration_current <= epsilon)
   {
     RCLCPP_ERROR(getLogger(), "Sample duration too small, cannot compute the velocity");
-    return false;
+    return -1.0;
   }
 
   double velocity_current, acceleration_current;
+
+  double max_scaling_factor = 0.0;
 
   for (const auto& pos : position_current)
   {
@@ -167,8 +169,8 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
                                            << " Actual joint velocity is " << velocity_current
                                            << ", while the limit is " << joint_limits.getLimit(pos.first).max_velocity
                                            << ". ");
-      return false;
     }
+    max_scaling_factor = std::max(max_scaling_factor, std::fabs(velocity_current / joint_limits.getLimit(pos.first).max_velocity));
 
     acceleration_current = (velocity_current - velocity_last.at(pos.first)) / (duration_last + duration_current) * 2;
     // acceleration case
@@ -181,7 +183,6 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
                                              << " Actual joint acceleration is " << acceleration_current
                                              << ", while the limit is "
                                              << joint_limits.getLimit(pos.first).max_acceleration << ". ");
-        return false;
       }
     }
     // deceleration case
@@ -194,12 +195,13 @@ bool pilz_industrial_motion_planner::verifySampleJointLimits(
                                              << " Actual joint deceleration is " << acceleration_current
                                              << ", while the limit is "
                                              << joint_limits.getLimit(pos.first).max_deceleration << ". ");
-        return false;
       }
     }
+    max_scaling_factor = std::max(max_scaling_factor, std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_acceleration));
+    max_scaling_factor = std::max(max_scaling_factor, std::fabs(acceleration_current / joint_limits.getLimit(pos.first).max_deceleration));
   }
 
-  return true;
+  return max_scaling_factor;
 }
 
 bool pilz_industrial_motion_planner::generateJointTrajectory(
@@ -234,6 +236,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     joint_velocity_last[item.first] = 0.0;
   }
 
+  double max_scaling_factor = 1.0;
+
   for (std::vector<double>::const_iterator time_iter = time_samples.begin(); time_iter != time_samples.end();
        ++time_iter)
   {
@@ -261,17 +265,20 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     }
 
     // skip the first sample with zero time from start for limits checking
-    if (time_iter != time_samples.begin() &&
-        !verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution, sampling_time,
-                                 duration_current_sample, joint_limits))
+    auto max_scaling_factor_sample = verifySampleJointLimits(ik_solution_last, joint_velocity_last, ik_solution,
+                                                        sampling_time, duration_current_sample, joint_limits);
+    if (time_iter != time_samples.begin() && max_scaling_factor_sample < 0.0)
     {
-      RCLCPP_ERROR_STREAM(getLogger(), "Inverse kinematics solution at "
-                                           << *time_iter
-                                           << "s violates the joint velocity/acceleration/deceleration limits.");
+      RCLCPP_ERROR_STREAM(getLogger(), "Can't verify the joint limits for the sample at " << *time_iter);
       error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
       joint_trajectory.points.clear();
       return false;
     }
+
+    RCLCPP_INFO_STREAM(getLogger(), "The sample at " << *time_iter << " has a scaling factor of "
+                                                     << max_scaling_factor_sample << ".");
+
+    max_scaling_factor = std::max(max_scaling_factor, max_scaling_factor_sample);
 
     // fill the point with joint values
     trajectory_msgs::msg::JointTrajectoryPoint point;
@@ -308,6 +315,30 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
     // update joint trajectory
     joint_trajectory.points.push_back(point);
     ik_solution_last = ik_solution;
+  }
+
+  if (max_scaling_factor > 1.5)
+  {
+    RCLCPP_ERROR_STREAM(getLogger(), "Velocity/acceleration limits are severely violated. The trajectory is not safe to execute.");
+    error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
+    joint_trajectory.points.clear();
+    return false;
+  }
+  else if (max_scaling_factor > 1.0)
+  {
+    RCLCPP_WARN_STREAM(getLogger(), "Velocity/acceleration limits are violated. Re-scaling the trajectory with a factor of " << max_scaling_factor);
+    for (auto& point : joint_trajectory.points)
+    {
+      point.time_from_start = rclcpp::Duration::from_seconds((point.time_from_start.sec + (point.time_from_start.nanosec * 1e-9)) * max_scaling_factor);
+      for (auto& velocity : point.velocities)
+      {
+        velocity /= max_scaling_factor;
+      }
+      for (auto& acceleration : point.accelerations)
+      {
+        acceleration /= max_scaling_factor;
+      }
+    }
   }
 
   error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
@@ -376,6 +407,8 @@ bool pilz_industrial_motion_planner::generateJointTrajectory(
       // overload generateJointTrajectory(...,
       // KDL::Trajectory, ...)
       // TODO: refactor to avoid code duplication.
+      // TODO(): Re-scale velocity and acceleration instead of failing.
+      // It seems this overload is not used at all, so it is not critical to fix this in the current state.
       RCLCPP_ERROR_STREAM(getLogger(), "Inverse kinematics solution of the "
                                            << i
                                            << "th sample violates the joint "

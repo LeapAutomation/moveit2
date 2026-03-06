@@ -164,7 +164,7 @@ double pilz_industrial_motion_planner::verifySampleJointLimits(
 
     if (!joint_limits.verifyVelocityLimit(pos.first, velocity_current))
     {
-      RCLCPP_ERROR_STREAM(getLogger(), "Joint velocity limit of "
+      RCLCPP_DEBUG_STREAM(getLogger(), "Joint velocity limit of "
                                            << pos.first << " violated. Set the velocity scaling factor lower!"
                                            << " Actual joint velocity is " << velocity_current
                                            << ", while the limit is " << joint_limits.getLimit(pos.first).max_velocity
@@ -178,7 +178,7 @@ double pilz_industrial_motion_planner::verifySampleJointLimits(
     {
       if (!joint_limits.verifyAccelerationLimit(pos.first, acceleration_current))
       {
-        RCLCPP_ERROR_STREAM(getLogger(), "Joint acceleration limit of "
+        RCLCPP_DEBUG_STREAM(getLogger(), "Joint acceleration limit of "
                                              << pos.first << " violated. Set the acceleration scaling factor lower!"
                                              << " Actual joint acceleration is " << acceleration_current
                                              << ", while the limit is "
@@ -190,7 +190,7 @@ double pilz_industrial_motion_planner::verifySampleJointLimits(
     {
       if (!joint_limits.verifyDecelerationLimit(pos.first, acceleration_current))
       {
-        RCLCPP_ERROR_STREAM(getLogger(), "Joint deceleration limit of "
+        RCLCPP_DEBUG_STREAM(getLogger(), "Joint deceleration limit of "
                                              << pos.first << " violated. Set the acceleration scaling factor lower!"
                                              << " Actual joint deceleration is " << acceleration_current
                                              << ", while the limit is "

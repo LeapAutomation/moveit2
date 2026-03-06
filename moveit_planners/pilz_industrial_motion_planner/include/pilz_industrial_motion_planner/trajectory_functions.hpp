@@ -107,7 +107,7 @@ bool computeLinkFK(moveit::core::RobotState& robot_state, const std::string& lin
  * @param joint_limits: joint limits
  * @return
  */
-bool verifySampleJointLimits(const std::map<std::string, double>& position_last,
+double verifySampleJointLimits(const std::map<std::string, double>& position_last,
                              const std::map<std::string, double>& velocity_last,
                              const std::map<std::string, double>& position_current, double duration_last,
                              double duration_current, const JointLimitsContainer& joint_limits);
